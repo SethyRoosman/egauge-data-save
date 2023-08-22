@@ -1,7 +1,11 @@
 from egauge.webapi.device import Capture, TriggerMode
 from egauge import webapi
+import plotly.express as px
+import pandas as pd
 import time, sys, os
 import csv, json
+pd.options.plotting.backend = "plotly"
+
 '''
 Getting waveform data
 
@@ -19,6 +23,11 @@ have main automate poll each hour
 ISO 8601 linux time <- translate ts
 save filename as DATE_L1.csv in subdirectory
 json setup <- somewhat done
+figure out discrepancies in timestamps
+
+PREREQS:
+pip3 install egauge-python
+pip3 install plotly==5.16.1
 
 by Seth Rossman
 '''
@@ -30,9 +39,9 @@ PWD = ""
 DUR = 0.0
 
 # loading config file
-if (os.path.isfile("egauge-data-config.json")):
+if (os.path.isfile("config.json")):
 	print("loading json config file... ", end="")
-	with open("egauge-data-config.json", "r") as config_file:
+	with open("config.json", "r") as config_file:
 		config_json = json.load(config_file)
 		URI = config_json["URI"]
 		USR = config_json["USR"]
@@ -64,6 +73,8 @@ l2_filename = "L2eGaugeWaveform.csv"
 s1_filename = "S1eGaugeWaveform.csv"
 s2_filename = "S2eGaugeWaveform.csv"
 
+data_directory = "./data_files/"
+
 def clear_lines(n):
 	LINE_UP = '\033[1A'
 	LINE_CLEAR = '\x1b[2K'
@@ -72,43 +83,45 @@ def clear_lines(n):
 		print(LINE_UP, end=LINE_CLEAR)
 
 def plot_points(data_samples):
-	# opens the csv files and plots
-	# multiline graph
+	df = []
+	for i in range(len(data_samples["L1"].ts)):
+		df.append({"label": "l1", "ts": data_samples["L1"].ts[i], "y": data_samples["L1"].ys[i]})
+		df.append({"label": "l2", "ts": data_samples["L2"].ts[i], "y": data_samples["L2"].ys[i]})
+		df.append({"label": "s1", "ts": data_samples["S1"].ts[i], "y": data_samples["S1"].ys[i]})
+		df.append({"label": "s2", "ts": data_samples["S2"].ts[i], "y": data_samples["S2"].ys[i]})
+
+	df = pd.DataFrame(df)
+	#print(df.head(10))
+
+	fig = px.line(df, x="ts", y="y", color="label", title="egauge waveform data", template="plotly_dark")
+	fig.show()
 
 def save_to_csv():
 	print()
-	with open(l1_filename, "w") as csvfile:
+	with open(data_directory + l1_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
 		csvwriter.writerows(fields)
 		csvwriter.writerows(l1_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % l1_filename)
-	with open(l2_filename, "w") as csvfile:
+	with open(data_directory + l2_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
 		csvwriter.writerows(fields)
 		csvwriter.writerows(l2_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % l2_filename)
-	with open(s1_filename, "w") as csvfile:
+	with open(data_directory + s1_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
 		csvwriter.writerows(fields)
 		csvwriter.writerows(s1_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % s1_filename)
-	with open(s2_filename, "w") as csvfile:
+	with open(data_directory + s2_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
 		csvwriter.writerows(fields)
 		csvwriter.writerows(s2_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % s2_filename)
-
-def setup():
-	# setup
-	print("\033[1;32;10m", end="")
-	print(dev.get("/config/net/hostname")["result"] + " is alive...")
-	print(f"\033[0;37mavailable channels: {cap.available_channels}")
-	cap.channels = cap.available_channels
-	print("\033[1;32;10msetup complete, starting data processing\033[0;37m")
 
 def data_collect():
 	# not sure if this should stay in function
@@ -179,7 +192,30 @@ def data_collect():
 	print("completed processing %d datapoints in %d seconds" % (entry_length, time_to_complete))
 	save_to_csv()
 
-	plot_points(data)
+	plot_points(data.samples)
+
+def setup():
+	# create/find subdirectory for datafiles
+	print("locating subdirectory -> ", end="")
+	if (os.path.isdir(data_directory)):
+		print("subdirectory found... entering")
+	else:
+		print("subdirectory not found... ", end="")
+		# create subdirectory
+		os.mkdir(data_directory)
+		if (os.path.isdir(data_directory)):
+			print("successfully created subdirectory")
+		else:
+			print("\033[0;31mERROR:\033[0;37m] directory was not created")
+			print("exiting...")
+			exit(1)
+
+	# egauge setup
+	print("\033[1;32;10m", end="")
+	print(dev.get("/config/net/hostname")["result"] + " is alive...")
+	print(f"\033[0;37mavailable channels: {cap.available_channels}")
+	cap.channels = cap.available_channels
+	print("\033[1;32;10msetup complete, starting data processing\033[0;37m")
 
 def main():
 	# this is where the timing loop will be
