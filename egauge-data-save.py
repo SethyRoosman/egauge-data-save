@@ -3,6 +3,7 @@ from egauge import webapi
 import plotly.express as px
 import pandas as pd
 import time, sys, os
+import datetime
 import csv, json
 pd.options.plotting.backend = "plotly"
 
@@ -37,6 +38,7 @@ URI = ""
 USR = ""
 PWD = ""
 DUR = 0.0
+T_INTERVAL = 0
 
 # loading config file
 if (os.path.isfile("config.json")):
@@ -47,6 +49,7 @@ if (os.path.isfile("config.json")):
 		USR = config_json["USR"]
 		PWD = config_json["PWD"]
 		DUR = config_json["DUR"]
+		T_INTERVAL = config_json["T_INTERVAL"]
 		config_file.close()
 	print("finished reading json")
 else:
@@ -61,17 +64,12 @@ channel = 'L1'
 # terminal output variables
 width, height = os.get_terminal_size()
 # csv variables
-fields = ["ts", "val"]
+fields = ['ts', 'val']
 
 l1_rows = []
 l2_rows = []
 s1_rows = []
 s2_rows = []
-
-l1_filename = "L1eGaugeWaveform.csv"
-l2_filename = "L2eGaugeWaveform.csv"
-s1_filename = "S1eGaugeWaveform.csv"
-s2_filename = "S2eGaugeWaveform.csv"
 
 data_directory = "./data_files/"
 
@@ -82,7 +80,8 @@ def clear_lines(n):
 	for i in range(n):
 		print(LINE_UP, end=LINE_CLEAR)
 
-def plot_points(data_samples):
+def plot_points(data_samples, show_toggle):
+	print("generating graph...", end="")
 	df = []
 	for i in range(len(data_samples["L1"].ts)):
 		df.append({"label": "l1", "ts": data_samples["L1"].ts[i], "y": data_samples["L1"].ys[i]})
@@ -91,39 +90,47 @@ def plot_points(data_samples):
 		df.append({"label": "s2", "ts": data_samples["S2"].ts[i], "y": data_samples["S2"].ys[i]})
 
 	df = pd.DataFrame(df)
-	#print(df.head(10))
+	print(df.head(10))
 
-	fig = px.line(df, x="ts", y="y", color="label", title="egauge waveform data", template="plotly_dark")
-	fig.show()
+	if show_toggle:
+		fig = px.line(df, x="ts", y="y", color="label", title="egauge waveform data", template="plotly_dark")
+		fig.show()
+		print()
+	else:
+		print(" N/A")
 
-def save_to_csv():
+def save_to_csv(l1_filename, l2_filename, s1_filename, s2_filename, ms):
 	print()
+	# adding unix ts
+	fields.append(str(ms))
+
 	with open(data_directory + l1_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
-		csvwriter.writerows(fields)
+		csvwriter.writerows([fields])
 		csvwriter.writerows(l1_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % l1_filename)
 	with open(data_directory + l2_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
-		csvwriter.writerows(fields)
+		csvwriter.writerows([fields])
 		csvwriter.writerows(l2_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % l2_filename)
 	with open(data_directory + s1_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
-		csvwriter.writerows(fields)
+		csvwriter.writerows([fields])
 		csvwriter.writerows(s1_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % s1_filename)
 	with open(data_directory + s2_filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile)
-		csvwriter.writerows(fields)
+		# adding exact datetime timestamp
+		csvwriter.writerows([fields])
 		csvwriter.writerows(s2_rows)
 		csvfile.close()
 	print("finished writing data to csv file [\033[0;33m %s \033[0;37m]" % s2_filename)
 
-def data_collect():
+def data_collect(l1_filename, l2_filename, s1_filename, s2_filename, ms):
 	# not sure if this should stay in function
 	#setup()
 
@@ -190,9 +197,8 @@ def data_collect():
 	end_time = time.perf_counter()
 	time_to_complete = end_time - start_time
 	print("completed processing %d datapoints in %d seconds" % (entry_length, time_to_complete))
-	save_to_csv()
-
-	plot_points(data.samples)
+	save_to_csv(l1_filename, l2_filename, s1_filename, s2_filename, ms)
+	plot_points(data.samples, False)
 
 def setup():
 	# create/find subdirectory for datafiles
@@ -220,7 +226,35 @@ def setup():
 def main():
 	# this is where the timing loop will be
 	setup()
-	data_collect()
+
+	'''
+	timing circuit logic
+	in while loop (run as service?)
+		every hour get unix date:time:ms
+		create new file with name DATE:TIME-REGISTER.csv
+		add fields (ts, vals, initiali unix date time) to csv
+		add data to csv
+		generate plot and indicate completion?
+	'''
+
+	while (True):
+		# get datetime
+		ms = datetime.datetime.now()
+		print(str(ms))
+		print()
+
+		year = ms.year
+		month = ms.month
+		day = ms.day
+		hour = ms.hour
+
+		l1_filename = "{}-{}-{}-L1-{}.csv".format(month, day, hour, year)
+		l2_filename = "{}-{}-{}-L2-{}.csv".format(month, day, hour, year)
+		s1_filename = "{}-{}-{}-S1-{}.csv".format(month, day, hour, year)
+		s2_filename = "{}-{}-{}-S2-{}.csv".format(month, day, hour, year)
+		data_collect(l1_filename, l2_filename, s1_filename, s2_filename, ms)
+
+		time.sleep(T_INTERVAL)
 
 if __name__ == '__main__':
 	main()

@@ -17,6 +17,7 @@ Fill out the config.json file with your eGauge's information
 	"URI": "https://EGAUGEHOSTNAME.egaug.es",
 	"USR": "USERNAME",
 	"PWD": "PASSWORD",
-	"DUR": 0.034
+	"DUR": 0.034,
+	"T_INTERVAL": 360
 }
 ```
